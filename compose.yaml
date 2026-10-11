@@ -1,0 +1,139 @@
+# Documentation-stage scaffold. No containers have been started or builds verified.
+# The app profile requires source code and lock files to be added in M01.
+name: orderflow
+
+x-app-environment: &app-environment
+  APP_ENV: development
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: ${POSTGRES_DB:-orderflow}
+  POSTGRES_USER: ${POSTGRES_USER:-orderflow}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+  REDIS_URL: redis://redis:6379/0
+  RABBITMQ_HOST: rabbitmq
+  RABBITMQ_PORT: "5672"
+  RABBITMQ_USER: ${RABBITMQ_USER:-orderflow}
+  RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD in .env}
+  APP_SECRET_KEY: ${APP_SECRET_KEY:?Set APP_SECRET_KEY in .env}
+  OUTBOX_ENCRYPTION_KEY: ${OUTBOX_ENCRYPTION_KEY:?Set OUTBOX_ENCRYPTION_KEY in .env}
+  IDEMPOTENCY_ENCRYPTION_KEY: ${IDEMPOTENCY_ENCRYPTION_KEY:?Set IDEMPOTENCY_ENCRYPTION_KEY in .env}
+  PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://localhost:8080}
+  SMTP_HOST: mailpit
+  SMTP_PORT: "1025"
+  SMTP_FROM: noreply@orderflow.local
+  STORAGE_ROOT: /var/lib/orderflow/files
+
+x-app-dependencies: &app-dependencies
+  postgres:
+    condition: service_healthy
+  redis:
+    condition: service_healthy
+  rabbitmq:
+    condition: service_healthy
+  mailpit:
+    condition: service_started
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-orderflow}
+      POSTGRES_USER: ${POSTGRES_USER:-orderflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7.4-alpine
+    # Cache/rate limits only; loss of Redis must not lose orders or jobs.
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    hostname: orderflow-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-orderflow}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD in .env}
+    ports:
+      - "127.0.0.1:15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+
+  mailpit:
+    # Pin a tested release/digest in M01 before the first permitted run.
+    image: axllent/mailpit:latest
+    ports:
+      - "127.0.0.1:8025:8025"
+
+  api:
+    profiles: ["app"]
+    build:
+      context: ./backend
+    environment: *app-environment
+    depends_on: *app-dependencies
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - files_data:/var/lib/orderflow/files
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    init: true
+
+  worker:
+    profiles: ["app"]
+    build:
+      context: ./backend
+    command: ["celery", "-A", "app.tasks.celery_app:celery_app", "worker", "--loglevel=INFO", "--concurrency=2"]
+    environment: *app-environment
+    depends_on: *app-dependencies
+    volumes:
+      - files_data:/var/lib/orderflow/files
+    init: true
+    stop_grace_period: 45s
+
+  beat:
+    profiles: ["app"]
+    build:
+      context: ./backend
+    command: ["celery", "-A", "app.tasks.celery_app:celery_app", "beat", "--loglevel=INFO", "--schedule=/tmp/celerybeat-schedule"]
+    environment: *app-environment
+    depends_on: *app-dependencies
+    init: true
+
+  frontend:
+    profiles: ["app"]
+    build:
+      context: ./frontend
+    ports:
+      - "127.0.0.1:8080:80"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  redis_data:
+  rabbitmq_data:
+  files_data:
