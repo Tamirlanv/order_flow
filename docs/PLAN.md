@@ -4,10 +4,10 @@
 
 ## Текущая точка остановки
 
-- **M01 и M02a завершены. По запросу пользователя выполнен S01 — безопасность существующих функций; локальные проверки прошли, CI новой ветки ещё предстоит. Проверка цен остаётся открытой до M03a.**
+- **M01 и M02a завершены. По запросу пользователя выполнен S01 — безопасность существующих функций; локальные проверки и CI прошли. Проверка цен остаётся открытой до M03a.**
 - Пользователь разрешил реализацию, feature-ветки, коммиты, merge и push в `origin`. Основная ветка — `main`; ветка текущего этапа — `feature/security-hardening`.
 - Пользователь разрешил Docker и продолжение разработки. Локальное окружение и инфраструктурные тесты CI разрешены; публикация образов и публичный deploy не входят в работу.
-- M01b слит в `main` (`8f6ff18`); [CI на main](https://github.com/Tamirlanv/order_flow/actions/runs/38351934384) успешен, включая Docker integration. M02a реализован в `feature/m02-authentication`. Следующий шаг: M02b — магазины, членство, роли и приглашения.
+- M01b и M02a слиты в `main` (`8f6ff18`, `1b3f4bf`). S01 реализован коммитом `f4b3298`; [CI безопасности](https://github.com/Tamirlanv/order_flow/actions/runs/38358314408) успешен по всем пяти jobs, включая HTTP/TLS и Gitleaks. Следующий функциональный шаг: M02b — магазины, членство, роли и приглашения.
 - Рабочий Python 3.12.14 найден в bundled runtime и использован для локального `backend/.venv`. Node.js v24.15.0 и Docker CLI доступны. Срок, часы в неделю и RAM не указаны.
 - Пользовательские `docs/DESIGN.md` и `docs/README_example.md` были untracked до работы. Использованы как референсы, не изменялись и не добавлялись в коммиты.
 - Реализация M01a слита в `main` через merge `eb5fbf1`; feature-ветка и `main` отправлены в `origin`. Кэш Vite исключён из Git вместе с остальными артефактами разработки.
@@ -24,7 +24,7 @@
 | M01a | API и UI, настройки, health, lock-файлы, baseline Alembic, Celery entrypoint, README, CI | Линт, формат, типы, unit/API-adapter/UI tests, frontend build, offline SQL, Compose config, локальный smoke | Готово; локальные проверки и GitHub Actions пройдены |
 | M01b | Проверка M01 на реальной инфраструктуре | PostgreSQL upgrade/downgrade, RabbitMQ worker, Docker build/run, readiness healthy | Готово; локальные проверки и CI пройдены |
 | M02a | Регистрация, подтверждение email, вход/выход и сессии | Пароли, неверный вход, CSRF, одноразовое подтверждение, истечение сессии | Готово; локальные проверки и CI пройдены |
-| S01 | Аудит текущих функций, Nginx/HTTPS, security CI и журнал | 5 применимых пунктов проверены; тест цены отложен до M03a | Локально проверено; CI предстоит |
+| S01 | Аудит текущих функций, Nginx/HTTPS, security CI и журнал | 5 применимых пунктов проверены; тест цены отложен до M03a | Текущий объём проверен локально и в CI |
 | M02b | Магазины, приглашения, членство и роли, выбор магазина | AC-01, AC-02, AC-18; запрет повышения роли и чужих данных | Не начат |
 | M02c | Восстановление пароля и отзыв сессий | AC-14/15; успех, истечение, повтор и конкурентное использование ссылки | Не начат |
 | M03a | Каталог, SKU, цены, архивирование и кабинет каталога | BR-11: цена строго > 0, API create/update и PostgreSQL CHECK; заменить 3 skip S01, unique в магазине, права | Не начат |
@@ -105,7 +105,7 @@
 - `node scripts/check-dependencies.mjs` — PyPI 88, npm 307 точных релизов, npm integrity/tarball; `pip_audit --disable-pip --no-deps -r requirements.lock -r requirements-dev.lock` и `npm --prefix frontend audit --audit-level=low` — 0 известных уязвимостей.
 - `node scripts/check-secrets.mjs` — Gitleaks 8.30.1, история --all + текущие исходники, 0 находок. `./scripts/check-nginx-logs.ps1` — маркер из query/headers/body отсутствует в свежих логах, безопасные JSON-записи есть.
 - Браузерный smoke: обзор, аккаунт, раскрытие Swagger операции работают с CSP, console/CSP ошибок нет. Предупреждение Vite о размере отдельного Swagger bundle не скрыто.
-- Следующий шаг: коммит, push feature, проверка CI, merge --no-ff и push main. После S01 — M02b. Открытые ограничения: нет API цен (M03a), HTTP режим без HSTS, публичный TLS/proxy ещё не настроены; Python lock без хэшей, container OS CVE scan не выполнялся.
+- Коммит реализации `f4b3298` отправлен в origin; [CI № 38358314408](https://github.com/Tamirlanv/order_flow/actions/runs/38358314408) — success: backend, frontend, configuration, integration, security. После фиксации этого результата ветка сливается в main через --no-ff и отправляется без force; следующий функциональный шаг — M02b. Открытые ограничения: нет API цен (M03a), HTTP режим без HSTS, публичный TLS/proxy ещё не настроены; Python lock без хэшей, container OS CVE scan не выполнялся.
 
 ## После MVP
 
