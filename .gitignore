@@ -11,6 +11,7 @@ __pycache__/
 .coverage
 htmlcov/
 node_modules/
+.vite/
 dist/
 coverage/
 playwright-report/
