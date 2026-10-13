@@ -20,6 +20,7 @@
   <a href="#status">Что работает</a> ·
   <a href="#architecture">Архитектура</a> ·
   <a href="#checks">Проверки</a> ·
+  <a href="#security">Безопасность</a> ·
   <a href="docs/PLAN.md">План разработки</a>
 </p>
 
@@ -48,6 +49,7 @@
 - Конфигурация через окружение, SQLAlchemy engine, базовая ревизия Alembic.
 - Подключение Celery без бизнес-задач и без автоматического запуска воркеров.
 - Зафиксированные зависимости, проверки исходников, Dockerfile и Compose.
+- Nginx с CSP и X-Frame-Options, опциональный локальный HTTPS/HSTS, Swagger без внешнего CDN; проверки реестров зависимостей и Gitleaks в CI.
 
 **Readiness возвращает 503, когда PostgreSQL, Redis или RabbitMQ недоступны.** Успех `/health/live` подтверждает только работу процесса API. Offline SQL Alembic не подтверждает выполнение миграций на БД.
 
@@ -69,7 +71,7 @@ npm --prefix frontend ci
 
 ```powershell
 cd backend
-.venv/Scripts/python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --no-access-log
+.venv/Scripts/python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --no-access-log --no-proxy-headers
 ```
 
 ### 3. Запустить frontend в другом терминале
@@ -79,12 +81,12 @@ cd frontend
 npm run dev
 ```
 
-Открой **[http://127.0.0.1:5173](http://127.0.0.1:5173)**. Vite перенаправляет `/api`, `/docs` и `/openapi.json` на локальный backend. Шрифт поставляется вместе с приложением, без обращения к Google Fonts.
+Открой **[http://127.0.0.1:5173](http://127.0.0.1:5173)**. Vite перенаправляет `/api` и `/openapi.json` на локальный backend; `/docs.html` отдаёт локальный Swagger UI. Шрифт и документация поставляются вместе с приложением. Проверка защитных заголовков выполняется через Nginx в Docker, а не через dev-сервер Vite.
 
 | Адрес | Назначение |
 | --- | --- |
 | `http://127.0.0.1:5173` | Интерфейс |
-| `http://127.0.0.1:8000/docs` | Интерактивная документация API |
+| `http://127.0.0.1:5173/docs.html` | Документация API (режим просмотра) |
 | `http://127.0.0.1:8000/health/live` | Работает ли API-процесс |
 | `http://127.0.0.1:8000/health/ready` | Доступность PostgreSQL, Redis и RabbitMQ |
 | `http://127.0.0.1:8000/api/v1/system` | Публичные сведения о версии и стадии |
@@ -130,7 +132,7 @@ flowchart LR
 <a id="checks"></a>
 ## Проверки
 
-Все доступные проверки одной командой из корня (нужен Docker CLI только для разбора Compose, без Engine):
+Проверки исходников одной командой из корня (нужен Docker CLI только для разбора Compose, без Engine; сетевые проверки безопасности приведены отдельно):
 
 ```powershell
 ./scripts/check.ps1
@@ -185,7 +187,7 @@ docker compose exec -T api python -m alembic upgrade head
 
 При отсутствии письма используй **Не пришло письмо подтверждения?** Ссылка действует 24 часа, повторная отправка отменяет прежнюю. До этапа очередей SMTP вызывается после фиксации БД; при сбое письмо можно запросить снова. Доставка пока не имеет гарантии восстановления через outbox.
 
-Для изменяющих запросов origin должен совпадать с `PUBLIC_APP_URL`; по умолчанию открывай именно `http://localhost:8080`. Swagger описывает API, но для ручных browser-POST также нужны cookies и `X-CSRF-Token`, полученный через `/api/v1/auth/csrf`.
+Для изменяющих запросов origin должен совпадать с `PUBLIC_APP_URL`; по умолчанию открывай именно `http://localhost:8080`. Swagger работает в режиме просмотра: отправка запросов из него отключена. Для ручных POST нужны cookies, Origin и `X-CSRF-Token`, полученный через `/api/v1/auth/csrf`.
 
 Полная проверка, включая миграции на временной БД и восстановление после перезапуска брокера:
 
@@ -196,6 +198,57 @@ docker compose exec -T api python -m alembic upgrade head
 Для уже собранных образов: `./scripts/check-integration.ps1 -SkipBuild`. Скрипт временно останавливает **локальный RabbitMQ**, затем восстанавливает его и оставляет окружение работающим. Основная БД не очищается. Без проверки перезапуска можно выполнить `docker compose --profile app --profile test run --rm --build tests`.
 
 Остановка: `docker compose --profile app down`. Volumes с данными сохраняются; не добавляй `--volumes`, если данные нужны. Имитаторы и мониторинг появятся на следующих этапах.
+
+<a id="security"></a>
+## Безопасность и результаты аудита
+
+Подробный [отчёт с проблемами, исправлениями и выводом проверок](logs/security/001-audit.md) хранится в `logs/security/`: не более 100 проблем на Markdown-файл.
+
+| Проверка | Текущее состояние |
+| --- | --- |
+| CSRF | Все 5 изменяющих действий требуют токен, cookie и точный Origin; UI передаёт токен в заголовке |
+| Заголовки | CSP без unsafe-inline/unsafe-eval, X-Frame-Options DENY, nosniff; HSTS только в HTTPS-режиме |
+| Перебор пароля | 10 попыток / 15 минут на нормализованный email; X-Forwarded-For не обходит лимит |
+| Цена > 0 | **Открыто до M03a**: каталога/API цен нет; 3 теста явно пропущены, требование BR-11 закреплено |
+| Зависимости | Проверяются версии в PyPI/npm, npm integrity и известные уязвимости через pip-audit/npm audit |
+| Секреты | Gitleaks сканирует историю всех доступных Git refs и текущие файлы; .env/сертификаты исключены из Git |
+
+Повтор сетевых проверок (из корня, нужны интернет и установленные зависимости):
+
+```powershell
+node --test scripts/check-dependencies.test.mjs
+node scripts/check-dependencies.mjs
+backend/.venv/Scripts/python.exe -m pip_audit --disable-pip --no-deps -r backend/requirements.lock -r backend/requirements-dev.lock
+npm --prefix frontend audit --audit-level=low
+./scripts/install-gitleaks.ps1
+node scripts/check-secrets.mjs
+```
+
+Gitleaks 8.30.1 скачивается с официального GitHub, SHA-256 закреплён в скрипте; поддержаны Windows/Linux x64. JSON-отчёты с redaction остаются в `.tmp/security/`. Существующий пакет и отсутствие известных advisory не доказывают отсутствие вредоносного кода.
+
+Проверки API/Nginx после сборки и запуска HTTP-окружения:
+
+```powershell
+docker compose --profile app --profile test build api frontend tests
+docker compose --profile app up -d --no-build --wait
+docker compose exec -T api python -m alembic upgrade head
+docker compose --profile app --profile test run --rm --no-deps tests
+./scripts/check-nginx-logs.ps1
+```
+
+### Локальный HTTPS и HSTS
+
+```powershell
+./scripts/init-local-tls.ps1
+docker compose -f compose.yaml -f compose.https.yaml --profile app up -d --no-build --wait
+docker compose -f compose.yaml -f compose.https.yaml --profile app --profile test run --rm --no-deps tests python -m pytest -q tests/test_security_gateway.py -k 'hsts or https_redirect'
+```
+
+HTTPS доступен на `https://localhost:8443`; HTTP 8080 перенаправляет на этот фиксированный адрес. Сертификат на 30 дней хранится в `.tmp/tls/`, скрипт не перезаписывает существующий и не устанавливает доверие в ОС. Браузер по умолчанию ему не доверяет. Тесты проверяют TLS с явным `cert.pem`, без отключения верификации. Для публичного использования нужен доверенный сертификат и отдельная конфигурация домена; публичный deploy не выполнен. HSTS не защищает обычный HTTP-режим и не считается действующим в браузере с недоверенным сертификатом.
+
+Вернуться к обычному локальному HTTP: `docker compose --profile app up -d --no-build --wait`. При переключении используй отдельный профиль браузера для тестового HTTPS, чтобы ранее установленные Secure cookies/HSTS не мешали HTTP-разработке.
+
+Nginx заменяет клиентские forwarding-заголовки; Uvicorn явно не доверяет proxy headers. Поэтому дополнительный IP-лимит сейчас общий для клиентов одного proxy; лимит аккаунта независим. Перед публичным запуском нужно настроить доверенные прокси и справедливый IP-лимит. Локальные Mailpit/RabbitMQ UI остаются служебными сервисами на loopback. Подробности и границы аудита — в [архитектуре](docs/ARCHITECTURE.md).
 
 ## Структура проекта
 
@@ -212,6 +265,7 @@ docs/
   features/          спецификации до реализации
   assets/            оформление документации
 scripts/check.ps1    локальные проверки без контейнеров
+logs/security/       обезличенные отчёты безопасности
 .github/workflows/   проверки исходников на push / pull request
 ```
 
@@ -234,6 +288,7 @@ scripts/check.ps1    локальные проверки без контейне
 - [x] Исходники API, стартовый интерфейс и локальные проверки.
 - [x] Проверка полного окружения M01b.
 - [x] Регистрация, подтверждение email, вход и сессии.
+- [x] Nginx, HTTPS-проверка и аудит безопасности текущих аккаунтов.
 - [ ] Магазины, приглашения и восстановление пароля.
 - [ ] Каталог, остатки и конкурентное резервирование.
 - [ ] Тестовые оплата, компенсации и доставка.

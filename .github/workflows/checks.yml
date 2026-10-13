@@ -24,6 +24,7 @@ jobs:
           cache-dependency-path: backend/requirements-dev.lock
       - run: python -m pip install -r requirements-dev.lock
       - run: python -m pip check
+      - run: python -m pip_audit --disable-pip --no-deps -r requirements.lock -r requirements-dev.lock
       - run: python -m ruff check app tests migrations
       - run: python -m ruff format --check app tests migrations
       - run: python -m mypy app
@@ -45,6 +46,7 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
+      - run: npm audit --audit-level=low
       - run: npm run check
 
   configuration:
@@ -55,6 +57,7 @@ jobs:
         with:
           node-version: '24'
       - run: node scripts/check-docs.mjs
+      - run: node --test scripts/check-dependencies.test.mjs
       - name: Validate Compose without starting containers
         run: docker compose --env-file .env.example --profile app config --quiet
 
@@ -69,6 +72,32 @@ jobs:
       - run: docker compose --profile app up -d --no-build --wait --wait-timeout 180
       - run: docker compose exec -T api python -m alembic upgrade head
       - run: docker compose --profile app --profile test run --rm --no-deps tests
+      - name: Check logs do not disclose request data
+        shell: pwsh
+        run: ./scripts/check-nginx-logs.ps1
+      - name: Generate disposable local TLS certificate
+        shell: pwsh
+        run: ./scripts/init-local-tls.ps1
+      - run: docker compose -f compose.yaml -f compose.https.yaml --profile app up -d --no-build --wait --wait-timeout 180
+      - run: docker compose -f compose.yaml -f compose.https.yaml --profile app --profile test run --rm --no-deps tests python -m pytest -q tests/test_security_gateway.py -k 'hsts or https_redirect'
       - name: Stop ephemeral CI environment
         if: always()
         run: docker compose --profile app --profile test down --volumes
+
+  security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verify every locked registry package
+        run: node scripts/check-dependencies.mjs
+      - name: Install checksum-pinned Gitleaks
+        shell: pwsh
+        run: ./scripts/install-gitleaks.ps1
+      - name: Scan full history and current source files
+        run: node scripts/check-secrets.mjs

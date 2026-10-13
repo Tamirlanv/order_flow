@@ -317,3 +317,86 @@ async def test_unknown_token_and_email_login_throttling(auth: Environment) -> No
         "/api/v1/auth/login", json={"email": EMAIL, "password": PASSWORD}
     )
     assert response.status_code == 429
+
+
+async def test_every_mutation_requires_bound_csrf_and_origin(auth: Environment) -> None:
+    requests = {
+        "/register": {"email": EMAIL, "password": PASSWORD},
+        "/login": {"email": EMAIL, "password": PASSWORD},
+        "/verification/request": {"email": EMAIL},
+        "/verification/confirm": {"token": "unused"},
+        "/logout": None,
+    }
+    schema = auth.app.openapi()
+    mutations = {
+        path.removeprefix("/api/v1/auth")
+        for path, methods in schema["paths"].items()
+        if set(methods) & {"post", "put", "patch", "delete"}
+    }
+    assert mutations == set(requests), "Add security coverage for each new mutation"
+    token = auth.client.headers["X-CSRF-Token"]
+    for path, body in requests.items():
+        for attack in (
+            {"X-CSRF-Token": ""},
+            {"X-CSRF-Token": "forged"},
+            {"Origin": "https://attacker.example"},
+            {"Origin": "null"},
+            {"Origin": ""},
+            {"Cookie": "orderflow_csrf_seed=another-browser"},
+        ):
+            response = await auth.client.post(f"/api/v1/auth{path}", json=body, headers=attack)
+            assert response.status_code == 403, (path, attack.keys(), response.status_code)
+            assert response.headers["cache-control"] == "no-store"
+    # A token without its cookie, including a cross-site form, cannot authorize an action.
+    async with AsyncClient(transport=ASGITransport(app=auth.app), base_url="http://test") as other:
+        for path, body in requests.items():
+            response = await other.post(
+                f"/api/v1/auth{path}",
+                json=body,
+                headers={"Origin": auth.client.headers["Origin"], "X-CSRF-Token": token},
+            )
+            assert response.status_code == 403
+        response = await other.post(
+            "/api/v1/auth/register",
+            data={"email": EMAIL, "password": PASSWORD},
+            headers={"Origin": "https://attacker.example"},
+        )
+        assert response.status_code == 403
+    async with auth.app.state.identity.sessions() as db:
+        assert (await db.scalar(select(func.count()).select_from(User))) == 0
+        assert (await db.scalar(select(func.count()).select_from(Session))) == 0
+    assert auth.mailbox.sent == []
+    print(
+        "CSRF: 5 endpoints x 7 invalid cases + cross-site form -> 403; "
+        "no users/sessions/mail created"
+    )
+
+
+async def test_account_limit_survives_ip_xff_case_and_cookie_changes(auth: Environment) -> None:
+    statuses = []
+    for attempt in range(12):
+        # Distinct transport peers and fresh cookie jars: IP limiting cannot explain 429.
+        async with AsyncClient(
+            transport=ASGITransport(app=auth.app, client=(f"192.0.2.{attempt + 1}", 1234)),
+            base_url="http://test",
+            headers={
+                "Origin": auth.client.headers["Origin"],
+                "X-Forwarded-For": f"198.51.100.{attempt + 1}",
+                "X-Real-IP": f"203.0.113.{attempt + 1}",
+                "Forwarded": f"for=198.51.100.{attempt + 1};proto=https",
+            },
+        ) as client:
+            csrf = (await client.get("/api/v1/auth/csrf")).json()["csrf_token"]
+            email = " OWNER@EXAMPLE.COM " if attempt % 2 else EMAIL
+            if attempt == 11:
+                email = "different@example.com"
+            result = await client.post(
+                "/api/v1/auth/login",
+                json={"email": email, "password": PASSWORD},
+                headers={"X-CSRF-Token": csrf},
+            )
+            statuses.append(result.status_code)
+            if attempt == 10:
+                assert int(result.headers["retry-after"]) > 0
+    assert statuses == [401] * 10 + [429, 401]
+    print(f"Account limit with fresh IP/cookie/XFF and email case changes: {statuses}")

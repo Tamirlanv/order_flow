@@ -23,6 +23,7 @@ try { Invoke-Checked 'npm.cmd' @('run', 'check') } finally { Pop-Location }
 Push-Location $taskRoot
 try {
     Invoke-Checked 'node' @('scripts/check-docs.mjs')
+    Invoke-Checked 'node' @('--test', 'scripts/check-dependencies.test.mjs')
     Invoke-Checked 'docker' @('compose', '--env-file', '.env.example', '--profile', 'app', 'config', '--quiet')
     Invoke-Checked 'git' @('diff', '--check')
 } finally { Pop-Location }

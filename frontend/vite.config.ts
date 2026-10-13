@@ -3,13 +3,17 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   plugins: [react()],
+  build: {
+    rollupOptions: {
+      input: { app: "index.html", docs: "docs.html" },
+    },
+  },
   server: {
     host: "127.0.0.1",
     port: 5173,
     strictPort: true,
     proxy: {
       "/api": "http://127.0.0.1:8000",
-      "/docs": "http://127.0.0.1:8000",
       "/openapi.json": "http://127.0.0.1:8000",
     },
   },

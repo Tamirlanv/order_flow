@@ -4,8 +4,8 @@
 
 ## Текущая точка остановки
 
-- **M01 и M02a завершены; локальные проверки и GitHub Actions пройдены.**
-- Пользователь разрешил реализацию, feature-ветки, коммиты, merge и push в `origin`. Основная ветка — `main`; ветка текущего этапа — `feature/m02-authentication`.
+- **M01 и M02a завершены. По запросу пользователя выполнен S01 — безопасность существующих функций; локальные проверки прошли, CI новой ветки ещё предстоит. Проверка цен остаётся открытой до M03a.**
+- Пользователь разрешил реализацию, feature-ветки, коммиты, merge и push в `origin`. Основная ветка — `main`; ветка текущего этапа — `feature/security-hardening`.
 - Пользователь разрешил Docker и продолжение разработки. Локальное окружение и инфраструктурные тесты CI разрешены; публикация образов и публичный deploy не входят в работу.
 - M01b слит в `main` (`8f6ff18`); [CI на main](https://github.com/Tamirlanv/order_flow/actions/runs/38351934384) успешен, включая Docker integration. M02a реализован в `feature/m02-authentication`. Следующий шаг: M02b — магазины, членство, роли и приглашения.
 - Рабочий Python 3.12.14 найден в bundled runtime и использован для локального `backend/.venv`. Node.js v24.15.0 и Docker CLI доступны. Срок, часы в неделю и RAM не указаны.
@@ -24,9 +24,10 @@
 | M01a | API и UI, настройки, health, lock-файлы, baseline Alembic, Celery entrypoint, README, CI | Линт, формат, типы, unit/API-adapter/UI tests, frontend build, offline SQL, Compose config, локальный smoke | Готово; локальные проверки и GitHub Actions пройдены |
 | M01b | Проверка M01 на реальной инфраструктуре | PostgreSQL upgrade/downgrade, RabbitMQ worker, Docker build/run, readiness healthy | Готово; локальные проверки и CI пройдены |
 | M02a | Регистрация, подтверждение email, вход/выход и сессии | Пароли, неверный вход, CSRF, одноразовое подтверждение, истечение сессии | Готово; локальные проверки и CI пройдены |
+| S01 | Аудит текущих функций, Nginx/HTTPS, security CI и журнал | 5 применимых пунктов проверены; тест цены отложен до M03a | Локально проверено; CI предстоит |
 | M02b | Магазины, приглашения, членство и роли, выбор магазина | AC-01, AC-02, AC-18; запрет повышения роли и чужих данных | Не начат |
 | M02c | Восстановление пароля и отзыв сессий | AC-14/15; успех, истечение, повтор и конкурентное использование ссылки | Не начат |
-| M03a | Каталог, SKU, цены, архивирование и кабинет каталога | Валидация, unique в магазине, права, snapshot-ready модели | Не начат |
+| M03a | Каталог, SKU, цены, архивирование и кабинет каталога | BR-11: цена строго > 0, API create/update и PostgreSQL CHECK; заменить 3 skip S01, unique в магазине, права | Не начат |
 | M03b | Остатки и журнал корректировок | BR-01; запрет отрицательного/меньшего резерва остатка, причина и автор | Не начат |
 | M04a | Создание заказа и атомарный резерв, партнёрские ключи | AC-03/04/05; 50 конкурентных запросов на PostgreSQL | Не начат |
 | M04b | Витрина, корзина, гостевой заказ и просмотр по секретной ссылке | Гость оформляет заказ; цена с клиента не принимается; доступ к чужому заказу запрещён | Не начат |
@@ -93,6 +94,18 @@
 - Ручной браузерный сценарий на `localhost:8080`: регистрация → письмо в Mailpit → явное подтверждение ссылки → вход → просмотр аккаунта → выход. Создан только локальный демонстрационный аккаунт, внешней отправки нет. Токен удаляется из fragment; GET его не расходует.
 - Документирован долг M04c: SMTP пока вызывается напрямую после commit, без автоматического восстановления; повтор письма доступен пользователю. IP-лимит считается по адресу соединения, произвольный X-Forwarded-For не принимается; перед публичным развёртыванием потребуется конфигурация доверенного proxy. Публикация не выполнялась.
 - Коммит реализации `3d5a940` отправлен в feature-ветку. [CI M02a](https://github.com/Tamirlanv/order_flow/actions/runs/38353614899) — успешно: backend, frontend, configuration и Docker integration. Локальные сервисы оставлены работающими. Незапущенные бизнес-сценарии заказов не считаются выполненными.
+
+## Журнал проверок S01 — 2026-10-13
+
+- До кода создана [спецификация 006](features/006-security-hardening.md). По просьбе пользователя результаты/исправления сохранены в [logs/security/001-audit.md](../logs/security/001-audit.md), не более 100 проблем на файл. Выделены реальные недоработки, профилактические меры и недоступная проверка цены.
+- Baseline Nginx: 9 failed; исправлены CSP/X-Frame-Options, HTTPS/HSTS конфигурация, forwarding, логирование, лимит auth-тела и dotfile fallback. Локальный Swagger без CDN/inline-скриптов, режим просмотра.
+- `docker compose --profile app --profile test build api frontend tests`; запуск приложения и `nginx -t` — успешно. Полный HTTP backend-набор: 43 passed, 7 skipped (4 TLS отдельно, 3 цены отсутствующего каталога).
+- `docker compose -f compose.yaml -f compose.https.yaml --profile app --profile test run --rm --no-deps tests python -m pytest -q tests/test_security_gateway.py -k 'hsts or https_redirect'` — 4 passed. Сертификат проверяется через CA-файл, доверие в ОС не устанавливалось. После проверки восстановлен HTTP localhost:8080, volumes сохранены.
+- `./scripts/check.ps1` — успешно: 16 локальных backend tests / 34 явных skip, 14 frontend tests, 3 Node-теста скрипта реестров, Ruff/format/mypy/ESLint/Prettier/TypeScript/build/offline SQL/Compose/docs. Начальная ошибка длины строки Ruff исправлена. Ограниченный sandbox pytest был прерван; повтор с доступом успешен.
+- `node scripts/check-dependencies.mjs` — PyPI 88, npm 307 точных релизов, npm integrity/tarball; `pip_audit --disable-pip --no-deps -r requirements.lock -r requirements-dev.lock` и `npm --prefix frontend audit --audit-level=low` — 0 известных уязвимостей.
+- `node scripts/check-secrets.mjs` — Gitleaks 8.30.1, история --all + текущие исходники, 0 находок. `./scripts/check-nginx-logs.ps1` — маркер из query/headers/body отсутствует в свежих логах, безопасные JSON-записи есть.
+- Браузерный smoke: обзор, аккаунт, раскрытие Swagger операции работают с CSP, console/CSP ошибок нет. Предупреждение Vite о размере отдельного Swagger bundle не скрыто.
+- Следующий шаг: коммит, push feature, проверка CI, merge --no-ff и push main. После S01 — M02b. Открытые ограничения: нет API цен (M03a), HTTP режим без HSTS, публичный TLS/proxy ещё не настроены; Python lock без хэшей, container OS CVE scan не выполнялся.
 
 ## После MVP
 
