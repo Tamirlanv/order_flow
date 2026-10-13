@@ -3,6 +3,7 @@ from sqlalchemy import create_engine, pool
 
 from app.core.config import get_settings
 from app.core.database import Base
+from app.modules.identity import models  # noqa: F401
 
 target_metadata = Base.metadata
 url = get_settings().database_url

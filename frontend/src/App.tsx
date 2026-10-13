@@ -19,18 +19,19 @@ import {
   Truck,
 } from "lucide-react";
 import { fetchSystem } from "./api";
+import AuthPanel from "./AuthPanel";
 
 const roadmap = [
   {
     title: "Основа платформы",
     caption: "API, интерфейс и проверки",
-    status: "В работе",
+    status: "Готово",
     icon: Layers3,
   },
   {
     title: "Команда и доступ",
     caption: "Аккаунты, магазины и роли",
-    status: "Далее",
+    status: "В работе",
     icon: ShieldCheck,
   },
   {
@@ -48,7 +49,9 @@ const roadmap = [
 ];
 
 export default function App() {
-  const [view, setView] = useState<"overview" | "roadmap">("overview");
+  const [view, setView] = useState<"overview" | "roadmap" | "account">(
+    window.location.hash.startsWith("#verify=") ? "account" : "overview",
+  );
   const api = useQuery({ queryKey: ["system"], queryFn: fetchSystem });
   const status = api.isFetching
     ? "Проверяем подключение"
@@ -77,6 +80,13 @@ export default function App() {
         <p className="nav-caption">ПЛАТФОРМА</p>
         <nav aria-label="Навигация">
           <button
+            className={`nav-item ${view === "account" ? "active" : ""}`}
+            onClick={() => setView("account")}
+            aria-current={view === "account" ? "page" : undefined}
+          >
+            <ShieldCheck size={18} /> Аккаунт <ChevronRight size={15} />
+          </button>
+          <button
             className={`nav-item ${view === "overview" ? "active" : ""}`}
             onClick={() => setView("overview")}
             aria-current={view === "overview" ? "page" : undefined}
@@ -95,7 +105,7 @@ export default function App() {
           </a>
         </nav>
         <div className="sidebar-note">
-          <span className="small-dot" /> Создаём основу
+          <span className="small-dot" /> Развиваем платформу
           <p>Надёжные заказы начинаются с правильной архитектуры.</p>
         </div>
         <div className="sidebar-footer">
@@ -108,14 +118,22 @@ export default function App() {
         <header className="topbar">
           <div>
             Платформа <ChevronRight size={13} />
-            <strong>{view === "overview" ? "Обзор" : "План развития"}</strong>
+            <strong>
+              {view === "overview"
+                ? "Обзор"
+                : view === "account"
+                  ? "Аккаунт"
+                  : "План развития"}
+            </strong>
           </div>
           <span className="build-badge">
             Ранняя версия <span>01</span>
           </span>
         </header>
         <main id="main" tabIndex={-1}>
-          {view === "overview" ? (
+          {view === "account" ? (
+            <AuthPanel />
+          ) : view === "overview" ? (
             <>
               <section className="hero" aria-labelledby="hero-title">
                 <div className="eyebrow">
@@ -205,8 +223,8 @@ export default function App() {
                 aria-labelledby="connection-title"
               >
                 <div className="connection-copy">
-                  <span className="eyebrow">ТЕКУЩИЙ ЭТАП · M01</span>
-                  <h2 id="connection-title">Основа уже обретает форму</h2>
+                  <span className="eyebrow">ТЕКУЩИЙ ЭТАП · M02</span>
+                  <h2 id="connection-title">Аккаунты уже доступны</h2>
                   <p>
                     Интерфейс связывается с сервером. Работа с магазинами и
                     заказами появится на следующих этапах.
@@ -219,7 +237,7 @@ export default function App() {
                       <Check size={15} /> Контракт API
                     </span>
                     <span>
-                      <Circle size={11} /> Проверка инфраструктуры впереди
+                      <Check size={13} /> Docker-окружение проверено
                     </span>
                   </div>
                 </div>
@@ -292,9 +310,9 @@ export default function App() {
                 )}
               </div>
               <p className="roadmap-note">
-                M01 пока не завершён: запуск полного окружения и проверки
-                инфраструктуры отложены. Заказы, авторизация и платежи ещё не
-                реализованы.
+                Docker-окружение, регистрация и вход проверены. Дальше —
+                магазины, роли и восстановление пароля. Заказы и платежи
+                появятся на следующих этапах.
               </p>
             </section>
           )}
