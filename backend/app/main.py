@@ -1,14 +1,23 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from typing import Annotated, Literal, cast
 
 from fastapi import Depends, FastAPI, Request, Response
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import async_sessionmaker
+from starlette.middleware.base import RequestResponseEndpoint
 
 from app import __version__
 from app.core.config import Settings, get_settings
 from app.core.database import make_engine
 from app.core.health import HealthChecker, HealthState, InfrastructureHealth
+from app.core.rate_limit import RateLimiter
+from app.integrations.email import SMTPMailer
+from app.modules.identity.router import router as identity_router
+from app.modules.identity.service import IdentityService
 
 
 class LivenessResponse(BaseModel):
@@ -38,6 +47,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         engine = make_engine(config)
         health = InfrastructureHealth(config, engine)
         application.state.health = health
+        application.state.identity = IdentityService(
+            async_sessionmaker(engine, expire_on_commit=False),
+            lambda: datetime.now(UTC),
+            SMTPMailer(config),
+        )
+        application.state.limiter = RateLimiter(
+            health.redis, config.app_secret_key.get_secret_value()
+        )
         try:
             yield
         finally:
@@ -50,8 +67,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         title="OrderFlow API",
         version=__version__,
         lifespan=lifespan,
-        description="Order management platform. Foundation endpoints; business API is planned.",
+        description="OrderFlow: accounts and infrastructure. Orders API is planned.",
     )
+    application.state.settings = config
+    application.include_router(identity_router)
+
+    @application.exception_handler(RequestValidationError)
+    async def validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
+        # FastAPI's default includes rejected input (including plaintext passwords).
+        safe = [{key: error[key] for key in ("loc", "msg", "type")} for error in exc.errors()]
+        return JSONResponse(status_code=422, content={"detail": safe})
+
+    @application.middleware("http")
+    async def private_auth_responses(
+        request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:
+        response = await call_next(request)
+        if request.url.path.startswith("/api/v1/auth/"):
+            response.headers["Cache-Control"] = "no-store"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        return response
 
     @application.get("/health/live", tags=["Health"], response_model=LivenessResponse)
     @application.get("/api/v1/health/live", include_in_schema=False)
