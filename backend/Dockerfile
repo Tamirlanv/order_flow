@@ -1,5 +1,4 @@
-# Build/run verification is pending explicit permission to use containers.
-FROM python:3.12-slim
+FROM python:3.12-slim AS base
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -14,7 +13,17 @@ RUN groupadd --gid 10001 app \
 # Fully pinned runtime dependencies; development tools stay outside this image.
 COPY requirements.lock ./requirements.lock
 RUN pip install --requirement requirements.lock
+
+FROM base AS runtime
 COPY --chown=app:app . .
 USER app
 EXPOSE 8000
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]
+
+FROM base AS test
+COPY requirements-dev.lock ./requirements-dev.lock
+RUN pip install --requirement requirements-dev.lock
+ENV PYTEST_ADDOPTS="-o cache_dir=/tmp/pytest-cache"
+COPY --chown=app:app . .
+USER app
+CMD ["python", "-m", "pytest", "-q"]

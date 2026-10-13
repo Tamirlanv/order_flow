@@ -24,7 +24,7 @@
 </p>
 
 > [!NOTE]
-> Сейчас реализуется **M01 — основа приложения**. API и интерфейс запускаются локально без Docker. Заказы, аккаунты, платежи и доставка ещё не реализованы. Полная проверка PostgreSQL, RabbitMQ и Docker-образов отложена: контейнеры по указанию владельца проекта не запускаются.
+> **M01 — основа приложения готова.** Есть API, интерфейс и проверенное локальное Docker-окружение. Заказы, аккаунты, платежи и доставка ещё не реализованы. Фактические результаты проверок — в [плане](docs/PLAN.md).
 
 ## Зачем OrderFlow
 
@@ -122,7 +122,7 @@ flowchart LR
 | Фоновые процессы | Celery 5, RabbitMQ 4, Redis 7.4 |
 | Интерфейс | React 19, TypeScript, Vite, TanStack Query |
 | Качество | pytest, Ruff, mypy, Vitest, Testing Library, ESLint, Prettier |
-| Окружение | Docker Compose, Nginx, Mailpit; запуск отложен |
+| Окружение | Docker Compose, Nginx, Mailpit |
 
 Подробности транзакций, изоляции магазинов и данных — в [архитектуре](docs/ARCHITECTURE.md).
 
@@ -153,9 +153,9 @@ cd frontend
 npm run check
 ```
 
-CI в GitHub Actions повторяет проверки исходников на Python 3.12 / Node 24. **CI не запускает контейнеры, не публикует образы и не развёртывает приложение.** Инфраструктурные зависимости в текущих API-тестах заменены тестовыми адаптерами. Последние фактические результаты и отложенные проверки — в [плане](docs/PLAN.md).
+CI в GitHub Actions повторяет проверки исходников на Python 3.12 / Node 24 и запускает отдельное временное Compose-окружение для интеграционных тестов. **Образы не публикуются, публичного deploy нет.** Unit/API-тесты используют подмены, а `test_infrastructure.py` проверяет реальные PostgreSQL, Redis, RabbitMQ и SMTP. Последние результаты — в [плане](docs/PLAN.md).
 
-## Docker: конфигурация подготовлена
+## Запуск полного окружения в Docker
 
 Проверка без запуска, из корня:
 
@@ -163,17 +163,26 @@ CI в GitHub Actions повторяет проверки исходников н
 docker compose --env-file .env.example --profile app config --quiet
 ```
 
-> [!IMPORTANT]
-> Сборка образов и запуск контейнеров пока не проверены и не разрешены. Следующие команды предназначены для будущего этапа M01b после снятия ограничения и настройки `.env`.
+Нужен запущенный Docker Desktop с Linux-контейнерами. Скрипт создаёт `.env` со случайными секретами и сохраняет существующий файл без перезаписи.
 
 ```powershell
-docker compose up -d
-docker compose --profile app build
-docker compose --profile app run --rm api alembic upgrade head
-docker compose --profile app up -d
+./scripts/init-env.ps1
+docker compose --profile app build api frontend
+docker compose --profile app up -d --no-build --wait
+docker compose exec -T api python -m alembic upgrade head
 ```
 
-Будущие адреса Compose: интерфейс `localhost:8080`, API `localhost:8000`, Mailpit `localhost:8025`, RabbitMQ UI `localhost:15672`. Импорт/экспорт, имитаторы и мониторинг добавляются по мере реализации. Остановка: `docker compose --profile app down`; не удалять volumes, если данные нужны.
+Открой [OrderFlow](http://localhost:8080), [API docs](http://localhost:8080/docs), [readiness](http://localhost:8080/api/v1/health/ready), [Mailpit](http://localhost:8025) или [RabbitMQ UI](http://localhost:15672). Для RabbitMQ используй значения из локального `.env`. Все порты опубликованы только на `127.0.0.1`; PostgreSQL и API доступны контейнерам по внутренней сети, что также исключает конфликт с локальным API на 8000. Секреты не коммитить.
+
+Полная проверка, включая миграции на временной БД и восстановление после перезапуска брокера:
+
+```powershell
+./scripts/check-integration.ps1
+```
+
+Для уже собранных образов: `./scripts/check-integration.ps1 -SkipBuild`. Скрипт временно останавливает **локальный RabbitMQ**, затем восстанавливает его и оставляет окружение работающим. Основная БД не очищается. Без проверки перезапуска можно выполнить `docker compose --profile app --profile test run --rm --build tests`.
+
+Остановка: `docker compose --profile app down`. Volumes с данными сохраняются; не добавляй `--volumes`, если данные нужны. Имитаторы и мониторинг появятся на следующих этапах.
 
 ## Структура проекта
 
@@ -210,7 +219,7 @@ scripts/check.ps1    локальные проверки без контейне
 
 - [x] Требования и архитектура.
 - [x] Исходники API, стартовый интерфейс и локальные проверки.
-- [ ] Проверка полного окружения M01b.
+- [x] Проверка полного окружения M01b.
 - [ ] Аккаунты, магазины, приглашения и восстановление пароля.
 - [ ] Каталог, остатки и конкурентное резервирование.
 - [ ] Тестовые оплата, компенсации и доставка.

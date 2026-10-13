@@ -12,6 +12,10 @@ celery_app.conf.update(
     task_acks_late=True,
     task_reject_on_worker_lost=True,
     worker_prefetch_multiplier=1,
+    # RabbitMQ 4.3 disallows transient non-exclusive control queues.
+    control_queue_exclusive=True,
+    event_queue_exclusive=True,
+    worker_cancel_long_running_tasks_on_connection_loss=True,
     task_default_delivery_mode="persistent",
     broker_transport_options={"confirm_publish": True},
     broker_connection_timeout=3,

@@ -57,3 +57,18 @@ jobs:
       - run: node scripts/check-docs.mjs
       - name: Validate Compose without starting containers
         run: docker compose --env-file .env.example --profile app config --quiet
+
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure disposable CI environment
+        run: cp .env.example .env
+      - run: docker compose --profile app --profile test build api frontend tests
+      - run: docker compose --profile app up -d --no-build --wait --wait-timeout 180
+      - run: docker compose exec -T api python -m alembic upgrade head
+      - run: docker compose --profile app --profile test run --rm --no-deps tests
+      - name: Stop ephemeral CI environment
+        if: always()
+        run: docker compose --profile app --profile test down --volumes
