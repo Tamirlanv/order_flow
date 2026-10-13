@@ -1,5 +1,5 @@
-# Documentation-stage scaffold. No containers have been started or builds verified.
-# The app profile requires source code and lock files to be added in M01.
+# Source code and lock files are present. Container builds/runs remain unverified.
+# Do not start containers without the user's explicit permission.
 name: orderflow
 
 x-app-environment: &app-environment

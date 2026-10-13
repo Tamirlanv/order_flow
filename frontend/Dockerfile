@@ -1,4 +1,4 @@
-# Scaffold: package.json, package-lock.json and Vite sources arrive in M01.
+# Build/run verification is pending explicit permission to use containers.
 FROM node:24-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
