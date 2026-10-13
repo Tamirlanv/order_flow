@@ -1,5 +1,4 @@
-# Source code and lock files are present. Container builds/runs remain unverified.
-# Do not start containers without the user's explicit permission.
+# Local development only. Published ports bind to loopback.
 name: orderflow
 
 x-app-environment: &app-environment
@@ -40,8 +39,6 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-orderflow}
       POSTGRES_USER: ${POSTGRES_USER:-orderflow}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
-    ports:
-      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -79,19 +76,18 @@ services:
       retries: 12
 
   mailpit:
-    # Pin a tested release/digest in M01 before the first permitted run.
-    image: axllent/mailpit:latest
+    image: axllent/mailpit:v1.31.4
     ports:
       - "127.0.0.1:8025:8025"
 
   api:
     profiles: ["app"]
+    image: orderflow-backend:local
     build:
       context: ./backend
+      target: runtime
     environment: *app-environment
     depends_on: *app-dependencies
-    ports:
-      - "127.0.0.1:8000:8000"
     volumes:
       - files_data:/var/lib/orderflow/files
     healthcheck:
@@ -103,8 +99,10 @@ services:
 
   worker:
     profiles: ["app"]
+    image: orderflow-backend:local
     build:
       context: ./backend
+      target: runtime
     command: ["celery", "-A", "app.tasks.celery_app:celery_app", "worker", "--loglevel=INFO", "--concurrency=2"]
     environment: *app-environment
     depends_on: *app-dependencies
@@ -115,8 +113,10 @@ services:
 
   beat:
     profiles: ["app"]
+    image: orderflow-backend:local
     build:
       context: ./backend
+      target: runtime
     command: ["celery", "-A", "app.tasks.celery_app:celery_app", "beat", "--loglevel=INFO", "--schedule=/tmp/celerybeat-schedule"]
     environment: *app-environment
     depends_on: *app-dependencies
@@ -131,6 +131,26 @@ services:
     depends_on:
       api:
         condition: service_healthy
+
+  tests:
+    profiles: ["test"]
+    build:
+      context: ./backend
+      target: test
+    environment:
+      <<: *app-environment
+      RUN_INTEGRATION: "1"
+      INTEGRATION_API_URL: http://api:8000
+      INTEGRATION_WEB_URL: http://frontend
+      MAILPIT_API_URL: http://mailpit:8025
+    depends_on:
+      api:
+        condition: service_healthy
+      frontend:
+        condition: service_started
+      worker:
+        condition: service_started
+    command: ["python", "-m", "pytest", "-q"]
 
 volumes:
   postgres_data:

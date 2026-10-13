@@ -1,6 +1,8 @@
 .env
 .env.*
 node_modules
+.vite
+*.tsbuildinfo
 dist
 coverage
 playwright-report

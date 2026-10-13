@@ -1,4 +1,3 @@
-# Build/run verification is pending explicit permission to use containers.
 FROM node:24-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
