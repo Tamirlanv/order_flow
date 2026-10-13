@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 360" role="img" aria-labelledby="title desc">
+  <title id="title">OrderFlow — от заказа до доставки</title>
+  <desc id="desc">Тёмный баннер с фиолетовой схемой движения заказа, резерва и доставки.</desc>
+  <defs>
+    <linearGradient id="surface" x2="1" y2="1"><stop stop-color="#191a24"/><stop offset="1" stop-color="#0e0e0e"/></linearGradient>
+    <radialGradient id="glow"><stop stop-color="#405bff" stop-opacity=".2"/><stop offset="1" stop-color="#405bff" stop-opacity="0"/></radialGradient>
+  </defs>
+  <rect width="1200" height="360" rx="28" fill="url(#surface)"/>
+  <ellipse cx="975" cy="170" rx="310" ry="230" fill="url(#glow)"/>
+  <rect x="1" y="1" width="1198" height="358" rx="28" fill="none" stroke="#30303d"/>
+  <g font-family="Segoe UI,Arial,sans-serif">
+    <text x="56" y="66" font-size="12" letter-spacing="3" fill="#a0a8c6">COMMERCE, CONNECTED.</text>
+    <text x="52" y="144" font-size="64" font-weight="600" fill="#fff">Order<tspan fill="#9aa8ff">Flow</tspan></text>
+    <text x="56" y="192" font-size="24" fill="#e5e6f3">От заказа до доставки.</text>
+    <text x="56" y="225" font-size="17" fill="#a7a9b5">Один процесс. Прозрачные состояния. Надёжный backend.</text>
+    <rect x="56" y="268" width="118" height="33" rx="16" fill="#252837" stroke="#454b6b"/>
+    <text x="80" y="290" font-size="12" fill="#bec8ff">PYTHON API</text>
+    <text x="195" y="290" font-size="12" fill="#939bb8">FastAPI / PostgreSQL / React</text>
+  </g>
+  <g fill="none" stroke="#7084ff" stroke-opacity=".3"><ellipse cx="966" cy="167" rx="158" ry="105" transform="rotate(-28 966 167)"/><ellipse cx="966" cy="167" rx="106" ry="150" transform="rotate(-28 966 167)"/></g>
+  <g stroke="#acb7ff" fill="#202338" stroke-width="1.5"><rect x="920" y="114" width="92" height="100" rx="29"/><path d="m943 148 23-13 23 13v30l-23 13-23-13v-30Zm0 0 23 13 23-13m-23 13v30" fill="none"/></g>
+  <circle cx="856" cy="86" r="5" fill="#a5b1ff"/>
+  <g font-family="Segoe UI,Arial,sans-serif" font-size="11" fill="#a2aaca"><text x="853" y="297">ORDER</text><text x="947" y="297">RESERVE</text><text x="1053" y="297">SHIP</text></g>
+  <path d="M901 292h30m-5-4 5 4-5 4m74-4h35m-5-4 5 4-5 4" fill="none" stroke="#7084ff"/>
+</svg>
