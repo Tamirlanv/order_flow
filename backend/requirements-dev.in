@@ -5,3 +5,4 @@ pytest-cov>=6,<8
 ruff>=0.9,<1
 mypy>=1.14,<2
 pip-tools>=7.4,<8
+pip-audit==2.10.1

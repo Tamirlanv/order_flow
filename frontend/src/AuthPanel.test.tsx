@@ -68,10 +68,13 @@ describe("accounts", () => {
     );
     await userEvent.type(screen.getByLabelText("Пароль"), "long-password-test");
     await userEvent.click(screen.getByRole("button", { name: "Войти" }));
+    expect(fetch.mock.calls[2][1].headers["X-CSRF-Token"]).toBe("anonymous");
     expect(await screen.findByText("Вы в OrderFlow")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Выйти" }));
     expect(await screen.findByText("Вы вышли из аккаунта")).toBeInTheDocument();
     expect(screen.getByLabelText("Email")).toBeInTheDocument();
+    expect(fetch.mock.calls[5][0]).toBe("/api/v1/auth/logout");
+    expect(fetch.mock.calls[5][1].headers["X-CSRF-Token"]).toBe("session");
   });
 
   it("requires an explicit confirmation click and handles an expired link", async () => {
@@ -96,6 +99,7 @@ describe("accounts", () => {
     expect(JSON.parse(fetch.mock.calls[2][1].body)).toEqual({
       token: "one-use-test-token",
     });
+    expect(fetch.mock.calls[2][1].headers["X-CSRF-Token"]).toBe("anonymous");
     await userEvent.click(
       screen.getByRole("button", { name: "Запросить новую ссылку" }),
     );
@@ -104,5 +108,29 @@ describe("accounts", () => {
         screen.getByRole("button", { name: "Отправить письмо" }),
       ).toBeInTheDocument(),
     );
+  });
+
+  it("resends verification with CSRF", async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(guest())
+      .mockResolvedValueOnce(response({ csrf_token: "resend-token" }))
+      .mockResolvedValueOnce(response({ message: "instructions" }, 202));
+    vi.stubGlobal("fetch", fetch);
+    renderPanel();
+    await userEvent.click(
+      await screen.findByRole("button", {
+        name: "Не пришло письмо подтверждения?",
+      }),
+    );
+    await userEvent.type(screen.getByLabelText("Email"), "owner@example.com");
+    await userEvent.click(
+      screen.getByRole("button", { name: "Отправить письмо" }),
+    );
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Проверьте почту",
+    );
+    expect(fetch.mock.calls[2][0]).toBe("/api/v1/auth/verification/request");
+    expect(fetch.mock.calls[2][1].headers["X-CSRF-Token"]).toBe("resend-token");
   });
 });

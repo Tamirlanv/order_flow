@@ -68,6 +68,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         version=__version__,
         lifespan=lifespan,
         description="OrderFlow: accounts and infrastructure. Orders API is planned.",
+        docs_url=None,
+        redoc_url=None,
     )
     application.state.settings = config
     application.include_router(identity_router)

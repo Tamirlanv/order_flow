@@ -1,0 +1,24 @@
+# Opt-in local HTTPS. Generate .tmp/tls with scripts/init-local-tls.ps1 first.
+services:
+  api:
+    environment:
+      PUBLIC_APP_URL: https://localhost:8443
+  worker:
+    environment:
+      PUBLIC_APP_URL: https://localhost:8443
+  beat:
+    environment:
+      PUBLIC_APP_URL: https://localhost:8443
+  frontend:
+    ports:
+      - "127.0.0.1:8443:443"
+    volumes:
+      - ./frontend/nginx-https.conf:/etc/nginx/orderflow/server.conf:ro
+      - ./.tmp/tls:/etc/orderflow/tls:ro
+  tests:
+    environment:
+      RUN_TLS: "1"
+      TLS_WEB_URL: https://frontend
+      TLS_CA_FILE: /etc/orderflow/tls/cert.pem
+    volumes:
+      - ./.tmp/tls/cert.pem:/etc/orderflow/tls/cert.pem:ro
